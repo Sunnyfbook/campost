@@ -1167,32 +1167,48 @@ async def get_posts_by_user_api(request):
 
 @routes.get("/api/posts/{post_id}/thumbnail")
 async def get_post_thumbnail_api(request):
-    """Get thumbnail for a specific post"""
+    """Get thumbnail for a specific post - serves actual image file"""
     try:
         post_id = request.match_info["post_id"]
         
-        # Handle sample post
+        # Handle sample post - return a simple placeholder image
         if post_id == "sample_1":
+            # Create a simple placeholder image
+            placeholder_svg = '''<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
+                <rect width="300" height="200" fill="#667eea"/>
+                <text x="150" y="100" text-anchor="middle" fill="white" font-family="Arial" font-size="16">Sample Thumbnail</text>
+            </svg>'''
             return web.Response(
-                status=302,
-                headers={'Location': 'https://via.placeholder.com/300x200/667eea/ffffff?text=Sample+Thumbnail'}
+                body=placeholder_svg.encode(),
+                content_type='image/svg+xml',
+                headers={'Cache-Control': 'public, max-age=3600'}
             )
         
         try:
             post = await db.get_post(post_id)
         except Exception as db_error:
             logging.error(f"Database error getting post {post_id}: {db_error}")
-            # Return placeholder image for database errors
+            # Return error placeholder
+            error_svg = '''<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
+                <rect width="300" height="200" fill="#ff6b6b"/>
+                <text x="150" y="100" text-anchor="middle" fill="white" font-family="Arial" font-size="16">Database Error</text>
+            </svg>'''
             return web.Response(
-                status=302,
-                headers={'Location': 'https://via.placeholder.com/300x200/ff6b6b/ffffff?text=Database+Error'}
+                body=error_svg.encode(),
+                content_type='image/svg+xml',
+                headers={'Cache-Control': 'public, max-age=3600'}
             )
         
         if not post or not post.get("thumbnail"):
-            # Return placeholder image when thumbnail not found
+            # Return no thumbnail placeholder
+            no_thumb_svg = '''<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
+                <rect width="300" height="200" fill="#95a5a6"/>
+                <text x="150" y="100" text-anchor="middle" fill="white" font-family="Arial" font-size="16">No Thumbnail</text>
+            </svg>'''
             return web.Response(
-                status=302,
-                headers={'Location': 'https://via.placeholder.com/300x200/95a5a6/ffffff?text=No+Thumbnail'}
+                body=no_thumb_svg.encode(),
+                content_type='image/svg+xml',
+                headers={'Cache-Control': 'public, max-age=3600'}
             )
         
         # Get the thumbnail file from Telegram
@@ -1200,35 +1216,55 @@ async def get_post_thumbnail_api(request):
             index = min(work_loads, key=work_loads.get)
             faster_client = multi_clients[index]
             
-            # Download and serve the thumbnail
-            file = await faster_client.download_media(post["thumbnail"])
+            # Download the thumbnail from Telegram
+            file_path = await faster_client.download_media(post["thumbnail"])
             
-            with open(file, 'rb') as f:
+            # Read the file and serve it
+            with open(file_path, 'rb') as f:
                 content = f.read()
+            
+            # Determine content type based on file extension
+            if file_path.lower().endswith('.png'):
+                content_type = 'image/png'
+            elif file_path.lower().endswith('.gif'):
+                content_type = 'image/gif'
+            else:
+                content_type = 'image/jpeg'
             
             return web.Response(
                 body=content,
-                content_type='image/jpeg',
+                content_type=content_type,
                 headers={
-                    'Content-Disposition': f'inline; filename="thumbnail_{post_id}.jpg"'
+                    'Content-Disposition': f'inline; filename="thumbnail_{post_id}.jpg"',
+                    'Cache-Control': 'public, max-age=3600'
                 }
             )
             
         except Exception as e:
             logging.error(f"Error serving thumbnail: {e}")
-            return web.json_response({
-                "success": False,
-                "error": "Failed to serve thumbnail",
-                "code": 500
-            }, status=500)
+            # Return error placeholder
+            error_svg = '''<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
+                <rect width="300" height="200" fill="#ff6b6b"/>
+                <text x="150" y="100" text-anchor="middle" fill="white" font-family="Arial" font-size="16">Error Loading</text>
+            </svg>'''
+            return web.Response(
+                body=error_svg.encode(),
+                content_type='image/svg+xml',
+                headers={'Cache-Control': 'public, max-age=3600'}
+            )
         
     except Exception as e:
         logging.error(f"Error getting thumbnail: {e}")
-        return web.json_response({
-            "success": False,
-            "error": "Failed to fetch thumbnail",
-            "code": 500
-        }, status=500)
+        # Return generic error placeholder
+        error_svg = '''<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
+            <rect width="300" height="200" fill="#ff6b6b"/>
+            <text x="150" y="100" text-anchor="middle" fill="white" font-family="Arial" font-size="16">Server Error</text>
+        </svg>'''
+        return web.Response(
+            body=error_svg.encode(),
+            content_type='image/svg+xml',
+            headers={'Cache-Control': 'public, max-age=3600'}
+        )
 
 @routes.post("/api/posts/clear")
 async def clear_all_posts_api(request):
