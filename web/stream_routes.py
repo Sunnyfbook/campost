@@ -8,7 +8,7 @@ from web.utils.custom_dl import ByteStreamer
 from utils import get_readable_time
 from web.utils import StartTime, __version__
 from web.utils.render_template import render_page
-from database.users_db import ads_config
+from database.users_db import ads_config, db
 from web.utils.file_properties import get_file_ids, get_hash
 from pyrogram.types import Message
 
