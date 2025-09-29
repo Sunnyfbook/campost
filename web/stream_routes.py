@@ -929,8 +929,20 @@ async def get_all_posts_api(request):
         limit = int(request.query.get('limit', 20))
         offset = int(request.query.get('offset', 0))
         
-        posts = await db.get_all_posts(limit + offset)
-        posts = posts[offset:offset + limit]
+        try:
+            posts = await db.get_all_posts(limit + offset)
+            posts = posts[offset:offset + limit]
+        except Exception as db_error:
+            logging.error(f"Database error in get_all_posts: {db_error}")
+            # Return empty posts array instead of error
+            return web.json_response({
+                "success": True,
+                "posts": [],
+                "total": 0,
+                "limit": limit,
+                "offset": offset,
+                "message": "No posts available due to database connection issues"
+            })
         
         # Format posts for API response
         formatted_posts = []
