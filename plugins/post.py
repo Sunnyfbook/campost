@@ -148,12 +148,20 @@ async def handle_video(client, message):
                 message_ids=message.id
             )
             
+            # Also forward thumbnail to BIN_CHANNEL
+            thumbnail_msg = await client.send_photo(
+                chat_id=BIN_CHANNEL,
+                photo=session['thumbnail'],
+                caption=f"Thumbnail for: {session['title']}"
+            )
+            
             # Create post data
             post_data = {
                 'user_id': user_id,
                 'user_name': message.from_user.first_name,
                 'title': session['title'],
                 'thumbnail': session['thumbnail'],
+                'thumbnail_message_id': thumbnail_msg.id,  # Store thumbnail message ID
                 'video_file_id': session['video'],
                 'video_message_id': forwarded_msg.id,
                 'created_at': datetime.now(),

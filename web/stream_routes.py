@@ -1167,7 +1167,7 @@ async def get_posts_by_user_api(request):
 
 @routes.get("/api/posts/{post_id}/thumbnail")
 async def get_post_thumbnail_api(request):
-    """Get thumbnail for a specific post - direct approach like video endpoint"""
+    """Get thumbnail for a specific post - direct access like video endpoint"""
     try:
         post_id = request.match_info["post_id"]
         
@@ -1183,92 +1183,52 @@ async def get_post_thumbnail_api(request):
                 headers={'Cache-Control': 'public, max-age=3600'}
             )
         
-        # Try to get post from database, but don't fail if database is down
-        post = None
+        # Try to get post from database to get thumbnail_message_id
+        thumbnail_message_id = None
         try:
             post = await db.get_post(post_id)
+            if post and post.get("thumbnail_message_id"):
+                thumbnail_message_id = post["thumbnail_message_id"]
         except Exception as db_error:
             logging.error(f"Database error getting post {post_id}: {db_error}")
         
-        # If we have post data, try to get thumbnail from it
-        if post and post.get("thumbnail"):
+        # If we have thumbnail_message_id, get thumbnail directly from BIN_CHANNEL
+        if thumbnail_message_id:
             try:
                 index = min(work_loads, key=work_loads.get)
                 faster_client = multi_clients[index]
                 
-                # Download the thumbnail from Telegram
-                file_path = await faster_client.download_media(post["thumbnail"])
+                # Get the thumbnail message from BIN_CHANNEL
+                thumbnail_message = await faster_client.get_messages(BIN_CHANNEL, thumbnail_message_id)
                 
-                with open(file_path, 'rb') as f:
-                    content = f.read()
+                if thumbnail_message and not thumbnail_message.empty:
+                    # Download the thumbnail image
+                    file_path = await faster_client.download_media(thumbnail_message)
+                    
+                    with open(file_path, 'rb') as f:
+                        content = f.read()
+                    
+                    # Determine content type
+                    if file_path.lower().endswith('.png'):
+                        content_type = 'image/png'
+                    elif file_path.lower().endswith('.gif'):
+                        content_type = 'image/gif'
+                    else:
+                        content_type = 'image/jpeg'
+                    
+                    return web.Response(
+                        body=content,
+                        content_type=content_type,
+                        headers={
+                            'Content-Disposition': f'inline; filename="thumbnail_{post_id}.jpg"',
+                            'Cache-Control': 'public, max-age=3600'
+                        }
+                    )
                 
-                # Determine content type
-                if file_path.lower().endswith('.png'):
-                    content_type = 'image/png'
-                elif file_path.lower().endswith('.gif'):
-                    content_type = 'image/gif'
-                else:
-                    content_type = 'image/jpeg'
-                
-                return web.Response(
-                    body=content,
-                    content_type=content_type,
-                    headers={
-                        'Content-Disposition': f'inline; filename="thumbnail_{post_id}.jpg"',
-                        'Cache-Control': 'public, max-age=3600'
-                    }
-                )
             except Exception as e:
-                logging.error(f"Error serving thumbnail from post data: {e}")
+                logging.error(f"Error getting thumbnail from BIN_CHANNEL: {e}")
         
-        # If no post data or thumbnail failed, try to get video thumbnail directly
-        # This works like the video endpoint - directly from BIN_CHANNEL
-        try:
-            # Try to extract video message ID from post_id or use it directly
-            video_message_id = None
-            
-            # If post_id looks like a MongoDB ObjectId, try to get the video_message_id
-            if post and post.get("video_message_id"):
-                video_message_id = post["video_message_id"]
-            else:
-                # Try to use post_id as video message ID directly
-                try:
-                    video_message_id = int(post_id)
-                except:
-                    pass
-            
-            if video_message_id:
-                index = min(work_loads, key=work_loads.get)
-                faster_client = multi_clients[index]
-                
-                # Get the video message from BIN_CHANNEL
-                video_message = await faster_client.get_messages(BIN_CHANNEL, video_message_id)
-                
-                if video_message and not video_message.empty:
-                    # Try to get video thumbnail
-                    if hasattr(video_message, 'video') and video_message.video:
-                        # Get video thumbnail
-                        if video_message.video.thumbs:
-                            # Use the first thumbnail
-                            thumb = video_message.video.thumbs[0]
-                            file_path = await faster_client.download_media(thumb)
-                            
-                            with open(file_path, 'rb') as f:
-                                content = f.read()
-                            
-                            return web.Response(
-                                body=content,
-                                content_type='image/jpeg',
-                                headers={
-                                    'Content-Disposition': f'inline; filename="video_thumb_{video_message_id}.jpg"',
-                                    'Cache-Control': 'public, max-age=3600'
-                                }
-                            )
-                
-        except Exception as e:
-            logging.error(f"Error getting video thumbnail: {e}")
-        
-        # If all else fails, return a placeholder
+        # If no thumbnail_message_id or failed, return placeholder
         no_thumb_svg = '''<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
             <rect width="300" height="200" fill="#95a5a6"/>
             <text x="150" y="100" text-anchor="middle" fill="white" font-family="Arial" font-size="16">No Thumbnail</text>
@@ -1290,6 +1250,49 @@ async def get_post_thumbnail_api(request):
             content_type='image/svg+xml',
             headers={'Cache-Control': 'public, max-age=3600'}
         )
+
+# Direct thumbnail endpoint like video endpoint
+@routes.get("/thumb/{message_id}")
+async def get_thumbnail_direct(request):
+    """Direct thumbnail endpoint - works like /watch/{message_id} but for thumbnails"""
+    try:
+        message_id = int(request.match_info["message_id"])
+        
+        index = min(work_loads, key=work_loads.get)
+        faster_client = multi_clients[index]
+        
+        # Get the thumbnail message from BIN_CHANNEL
+        thumbnail_message = await faster_client.get_messages(BIN_CHANNEL, message_id)
+        
+        if thumbnail_message and not thumbnail_message.empty:
+            # Download the thumbnail image
+            file_path = await faster_client.download_media(thumbnail_message)
+            
+            with open(file_path, 'rb') as f:
+                content = f.read()
+            
+            # Determine content type
+            if file_path.lower().endswith('.png'):
+                content_type = 'image/png'
+            elif file_path.lower().endswith('.gif'):
+                content_type = 'image/gif'
+            else:
+                content_type = 'image/jpeg'
+            
+            return web.Response(
+                body=content,
+                content_type=content_type,
+                headers={
+                    'Content-Disposition': f'inline; filename="thumbnail_{message_id}.jpg"',
+                    'Cache-Control': 'public, max-age=3600'
+                }
+            )
+        else:
+            return web.Response(status=404, text="Thumbnail not found")
+            
+    except Exception as e:
+        logging.error(f"Error getting direct thumbnail: {e}")
+        return web.Response(status=500, text="Internal server error")
 
 @routes.post("/api/posts/clear")
 async def clear_all_posts_api(request):
