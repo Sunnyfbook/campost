@@ -977,8 +977,8 @@ async def get_all_posts_api(request):
                     file_props = await get_file_ids(faster_client, BIN_CHANNEL, post['video_message_id'])
                     
                     if file_props:
-                        # Generate URLs
-                        bot_url = "https://camgrabber.onrender.com"
+                        # Generate URLs - use the actual Render URL
+                        bot_url = "https://campost.onrender.com"
                         stream_url = f"{bot_url}/watch/{post['video_message_id']}"
                         download_url = f"{bot_url}/dl/{post['video_message_id']}"
                         
@@ -1116,8 +1116,8 @@ async def get_posts_by_user_api(request):
                     file_props = await get_file_ids(faster_client, BIN_CHANNEL, post['video_message_id'])
                     
                     if file_props:
-                        # Generate URLs
-                        bot_url = "https://camgrabber.onrender.com"
+                        # Generate URLs - use the actual Render URL
+                        bot_url = "https://campost.onrender.com"
                         stream_url = f"{bot_url}/watch/{post['video_message_id']}"
                         download_url = f"{bot_url}/dl/{post['video_message_id']}"
                         
@@ -1171,14 +1171,29 @@ async def get_post_thumbnail_api(request):
     try:
         post_id = request.match_info["post_id"]
         
-        post = await db.get_post(post_id)
+        # Handle sample post
+        if post_id == "sample_1":
+            return web.Response(
+                status=302,
+                headers={'Location': 'https://via.placeholder.com/300x200/667eea/ffffff?text=Sample+Thumbnail'}
+            )
+        
+        try:
+            post = await db.get_post(post_id)
+        except Exception as db_error:
+            logging.error(f"Database error getting post {post_id}: {db_error}")
+            # Return placeholder image for database errors
+            return web.Response(
+                status=302,
+                headers={'Location': 'https://via.placeholder.com/300x200/ff6b6b/ffffff?text=Database+Error'}
+            )
         
         if not post or not post.get("thumbnail"):
-            return web.json_response({
-                "success": False,
-                "error": "Thumbnail not found",
-                "code": 404
-            }, status=404)
+            # Return placeholder image when thumbnail not found
+            return web.Response(
+                status=302,
+                headers={'Location': 'https://via.placeholder.com/300x200/95a5a6/ffffff?text=No+Thumbnail'}
+            )
         
         # Get the thumbnail file from Telegram
         try:
