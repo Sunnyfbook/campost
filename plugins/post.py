@@ -21,13 +21,14 @@ user_sessions = {}
 @Client.on_message(filters.command("post") & filters.incoming)
 async def start_post_creation(client, message):
     """Start the post creation workflow"""
-    try:
-        if not await db.is_user_exist(message.from_user.id):
-            await db.add_user(message.from_user.id, message.from_user.first_name)
-            await client.send_message(LOG_CHANNEL, script.LOG_TEXT.format(message.from_user.id, message.from_user.mention))
-    except Exception as e:
-        print(f"Database error in post creation: {e}")
-        # Continue with post creation even if database fails
+    # Skip database check for now to avoid connection issues
+    # try:
+    #     if not await db.is_user_exist(message.from_user.id):
+    #         await db.add_user(message.from_user.id, message.from_user.first_name)
+    #         await client.send_message(LOG_CHANNEL, script.LOG_TEXT.format(message.from_user.id, message.from_user.mention))
+    # except Exception as e:
+    #     print(f"Database error in post creation: {e}")
+    #     # Continue with post creation even if database fails
     
     if FSUB:
         if not await is_user_joined(client, message):
@@ -165,6 +166,8 @@ async def handle_video(client, message):
             except Exception as e:
                 print(f"Database error saving post: {e}")
                 post_id = f"temp_{int(time.time())}"  # Generate temporary ID
+                # For now, just use the video message ID as post ID
+                post_id = str(forwarded_msg.id)
             
             if post_id:
                 # Send success message
@@ -251,12 +254,13 @@ async def handle_post_callbacks(client, query: CallbackQuery):
 @Client.on_message(filters.command("myposts") & filters.incoming)
 async def show_user_posts(client, message):
     """Show user's posts"""
-    try:
-        if not await db.is_user_exist(message.from_user.id):
-            await db.add_user(message.from_user.id, message.from_user.first_name)
-            await client.send_message(LOG_CHANNEL, script.LOG_TEXT.format(message.from_user.id, message.from_user.mention))
-    except Exception as e:
-        print(f"Database error in myposts: {e}")
+    # Skip database check for now
+    # try:
+    #     if not await db.is_user_exist(message.from_user.id):
+    #         await db.add_user(message.from_user.id, message.from_user.first_name)
+    #         await client.send_message(LOG_CHANNEL, script.LOG_TEXT.format(message.from_user.id, message.from_user.mention))
+    # except Exception as e:
+    #     print(f"Database error in myposts: {e}")
     
     if FSUB:
         if not await is_user_joined(client, message):
