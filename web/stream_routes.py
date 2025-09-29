@@ -940,7 +940,7 @@ async def get_all_posts_api(request):
                 "title": "Sample Post (Database Connection Issue)",
                 "user_name": "System",
                 "user_id": 0,
-                "thumbnail": "https://via.placeholder.com/300x200/667eea/ffffff?text=Sample+Thumbnail",
+                "thumbnail": f"{bot_url}/thumb/1",
                 "video": {
                     "message_id": 1,
                     "file_name": "sample.mp4",
@@ -987,7 +987,7 @@ async def get_all_posts_api(request):
                             "title": post['title'],
                             "user_name": post['user_name'],
                             "user_id": post['user_id'],
-                            "thumbnail": f"{bot_url}/api/posts/{post['_id']}/thumbnail",
+                            "thumbnail": f"{bot_url}/thumb/{post.get('thumbnail_message_id', 0)}" if post.get('thumbnail_message_id') else f"{bot_url}/api/posts/{post['_id']}/thumbnail",
                             "video": {
                                 "message_id": post['video_message_id'],
                                 "file_name": getattr(file_props, 'file_name', 'video.mp4'),
@@ -1126,7 +1126,7 @@ async def get_posts_by_user_api(request):
                             "title": post['title'],
                             "user_name": post['user_name'],
                             "user_id": post['user_id'],
-                            "thumbnail": f"{bot_url}/api/posts/{post['_id']}/thumbnail",
+                            "thumbnail": f"{bot_url}/thumb/{post.get('thumbnail_message_id', 0)}" if post.get('thumbnail_message_id') else f"{bot_url}/api/posts/{post['_id']}/thumbnail",
                             "video": {
                                 "message_id": post['video_message_id'],
                                 "file_name": getattr(file_props, 'file_name', 'video.mp4'),
