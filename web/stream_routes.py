@@ -1167,13 +1167,12 @@ async def get_posts_by_user_api(request):
 
 @routes.get("/api/posts/{post_id}/thumbnail")
 async def get_post_thumbnail_api(request):
-    """Get thumbnail for a specific post - serves actual image file"""
+    """Get thumbnail for a specific post - direct approach like video endpoint"""
     try:
         post_id = request.match_info["post_id"]
         
-        # Handle sample post - return a simple placeholder image
+        # Handle sample post
         if post_id == "sample_1":
-            # Create a simple placeholder image
             placeholder_svg = '''<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
                 <rect width="300" height="200" fill="#667eea"/>
                 <text x="150" y="100" text-anchor="middle" fill="white" font-family="Arial" font-size="16">Sample Thumbnail</text>
@@ -1184,78 +1183,104 @@ async def get_post_thumbnail_api(request):
                 headers={'Cache-Control': 'public, max-age=3600'}
             )
         
+        # Try to get post from database, but don't fail if database is down
+        post = None
         try:
             post = await db.get_post(post_id)
         except Exception as db_error:
             logging.error(f"Database error getting post {post_id}: {db_error}")
-            # Return error placeholder
-            error_svg = '''<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
-                <rect width="300" height="200" fill="#ff6b6b"/>
-                <text x="150" y="100" text-anchor="middle" fill="white" font-family="Arial" font-size="16">Database Error</text>
-            </svg>'''
-            return web.Response(
-                body=error_svg.encode(),
-                content_type='image/svg+xml',
-                headers={'Cache-Control': 'public, max-age=3600'}
-            )
         
-        if not post or not post.get("thumbnail"):
-            # Return no thumbnail placeholder
-            no_thumb_svg = '''<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
-                <rect width="300" height="200" fill="#95a5a6"/>
-                <text x="150" y="100" text-anchor="middle" fill="white" font-family="Arial" font-size="16">No Thumbnail</text>
-            </svg>'''
-            return web.Response(
-                body=no_thumb_svg.encode(),
-                content_type='image/svg+xml',
-                headers={'Cache-Control': 'public, max-age=3600'}
-            )
+        # If we have post data, try to get thumbnail from it
+        if post and post.get("thumbnail"):
+            try:
+                index = min(work_loads, key=work_loads.get)
+                faster_client = multi_clients[index]
+                
+                # Download the thumbnail from Telegram
+                file_path = await faster_client.download_media(post["thumbnail"])
+                
+                with open(file_path, 'rb') as f:
+                    content = f.read()
+                
+                # Determine content type
+                if file_path.lower().endswith('.png'):
+                    content_type = 'image/png'
+                elif file_path.lower().endswith('.gif'):
+                    content_type = 'image/gif'
+                else:
+                    content_type = 'image/jpeg'
+                
+                return web.Response(
+                    body=content,
+                    content_type=content_type,
+                    headers={
+                        'Content-Disposition': f'inline; filename="thumbnail_{post_id}.jpg"',
+                        'Cache-Control': 'public, max-age=3600'
+                    }
+                )
+            except Exception as e:
+                logging.error(f"Error serving thumbnail from post data: {e}")
         
-        # Get the thumbnail file from Telegram
+        # If no post data or thumbnail failed, try to get video thumbnail directly
+        # This works like the video endpoint - directly from BIN_CHANNEL
         try:
-            index = min(work_loads, key=work_loads.get)
-            faster_client = multi_clients[index]
+            # Try to extract video message ID from post_id or use it directly
+            video_message_id = None
             
-            # Download the thumbnail from Telegram
-            file_path = await faster_client.download_media(post["thumbnail"])
-            
-            # Read the file and serve it
-            with open(file_path, 'rb') as f:
-                content = f.read()
-            
-            # Determine content type based on file extension
-            if file_path.lower().endswith('.png'):
-                content_type = 'image/png'
-            elif file_path.lower().endswith('.gif'):
-                content_type = 'image/gif'
+            # If post_id looks like a MongoDB ObjectId, try to get the video_message_id
+            if post and post.get("video_message_id"):
+                video_message_id = post["video_message_id"]
             else:
-                content_type = 'image/jpeg'
+                # Try to use post_id as video message ID directly
+                try:
+                    video_message_id = int(post_id)
+                except:
+                    pass
             
-            return web.Response(
-                body=content,
-                content_type=content_type,
-                headers={
-                    'Content-Disposition': f'inline; filename="thumbnail_{post_id}.jpg"',
-                    'Cache-Control': 'public, max-age=3600'
-                }
-            )
-            
+            if video_message_id:
+                index = min(work_loads, key=work_loads.get)
+                faster_client = multi_clients[index]
+                
+                # Get the video message from BIN_CHANNEL
+                video_message = await faster_client.get_messages(BIN_CHANNEL, video_message_id)
+                
+                if video_message and not video_message.empty:
+                    # Try to get video thumbnail
+                    if hasattr(video_message, 'video') and video_message.video:
+                        # Get video thumbnail
+                        if video_message.video.thumbs:
+                            # Use the first thumbnail
+                            thumb = video_message.video.thumbs[0]
+                            file_path = await faster_client.download_media(thumb)
+                            
+                            with open(file_path, 'rb') as f:
+                                content = f.read()
+                            
+                            return web.Response(
+                                body=content,
+                                content_type='image/jpeg',
+                                headers={
+                                    'Content-Disposition': f'inline; filename="video_thumb_{video_message_id}.jpg"',
+                                    'Cache-Control': 'public, max-age=3600'
+                                }
+                            )
+                
         except Exception as e:
-            logging.error(f"Error serving thumbnail: {e}")
-            # Return error placeholder
-            error_svg = '''<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
-                <rect width="300" height="200" fill="#ff6b6b"/>
-                <text x="150" y="100" text-anchor="middle" fill="white" font-family="Arial" font-size="16">Error Loading</text>
-            </svg>'''
-            return web.Response(
-                body=error_svg.encode(),
-                content_type='image/svg+xml',
-                headers={'Cache-Control': 'public, max-age=3600'}
-            )
+            logging.error(f"Error getting video thumbnail: {e}")
+        
+        # If all else fails, return a placeholder
+        no_thumb_svg = '''<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
+            <rect width="300" height="200" fill="#95a5a6"/>
+            <text x="150" y="100" text-anchor="middle" fill="white" font-family="Arial" font-size="16">No Thumbnail</text>
+        </svg>'''
+        return web.Response(
+            body=no_thumb_svg.encode(),
+            content_type='image/svg+xml',
+            headers={'Cache-Control': 'public, max-age=3600'}
+        )
         
     except Exception as e:
         logging.error(f"Error getting thumbnail: {e}")
-        # Return generic error placeholder
         error_svg = '''<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
             <rect width="300" height="200" fill="#ff6b6b"/>
             <text x="150" y="100" text-anchor="middle" fill="white" font-family="Arial" font-size="16">Server Error</text>
